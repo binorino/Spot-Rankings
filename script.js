@@ -4,7 +4,7 @@ const $=s=>document.querySelector(s), esc=(s='')=>String(s).replace(/[&<>"']/g,m
 function csvParse(text){let out=[],row=[],v='',q=false;for(let i=0;i<text.length;i++){let c=text[i];if(q){if(c==='"'&&text[i+1]==='"'){v+='"';i++}else if(c==='"')q=false;else v+=c}else if(c==='"')q=true;else if(c===','){row.push(v);v=''}else if(c==='\n'){row.push(v.replace(/\r$/,''));out.push(row);row=[];v=''}else v+=c}row.push(v.replace(/\r$/,''));if(row.some(x=>x!==''))out.push(row);return out}
 const num=x=>{const s=String(x??'').trim();if(!s||s.toUpperCase()==='N/A')return null;const n=Number(s);return Number.isFinite(n)?n:null};
 const textNote=x=>{const s=String(x??'').trim();return s&&/[A-Za-z]/.test(s)&&s.toUpperCase()!=='N/A'?s:''};
-const wifiLabel=w=>{const s=String(w??'').trim();if(/^(yes|good)\b/i.test(s))return'Good Wifi';if(/^(meh|ok|okay)\b/i.test(s))return'Meh Wifi';if(/^(no|bad)\b/i.test(s))return'Bad Wifi';return /wi-?fi/i.test(s)?s.replace(/wi-?fi/i,'Wifi'):`${s} Wifi`};
+const wifiLabel=w=>{const s=String(w??'').trim();if(/^(yes|good)\b/i.test(s))return'Good Wifi';if(/^(meh|ok|okay|kinda)\b/i.test(s))return'Meh Wifi';if(/^(no|bad)\b/i.test(s))return'Bad Wifi';return /wi-?fi/i.test(s)?s.replace(/wi-?fi/i,'Wifi'):`${s} Wifi`};
 const spotSlug=name=>String(name||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 const photoPath=(s,file)=>`images/spots/${spotSlug(s.name)}/${file}`;
 function photoList(s,type){return spotPhotos[`${s.area}|${s.name}`]?.[type]||[]}
