@@ -13,14 +13,24 @@ A student-made guide to study spots around USC and Los Angeles, with a vintage g
   Spotify-Wrapped-style recap, a study calendar, a friendly leaderboard and achievements — per rater
 
 ## Study Wrapped data
-Saved through `google-apps-script.gs` (version 6+) into two tabs it creates automatically:
-- **Sessions** — one row per study session (who, where, date, start/end, minutes, rating, notes,
-  photo links, timelapse link). Live sessions are saved as `active` when started and `done` when stopped.
-- **Rating Log** — every rating submitted from New Rating, with the date it applies to.
+Everything lives in the existing Google Sheet, written by `google-apps-script.gs` (version 6+):
 
-Session photos and timelapse videos are uploaded to Cloudinary (same unsigned preset as spot photos).
-Timelapses use the browser camera (`getUserMedia`), capture a frame every few seconds while the tab is
-open, and are rendered to video in the browser with `MediaRecorder` when the session stops.
+```
+User (rater)
+ └─ Sessions tab   Session ID · Person · Place · Area · Date · Start · End · Minutes · Status ·
+                   Studied · Rating · Notes · Timelapse · Source · Started At · Updated At
+     ├─ Location   Place + Area → the On Campus / K-Town / Fryft Zone tabs (or a new place, Area "Other")
+     ├─ Photos tab (existing) rows with Photo Type "session" and the Session ID in column H
+     └─ Timelapse  Cloudinary video link on the session row
+ └─ Rating Log tab every rating from New Rating with the date it applies to
+```
 
-## GitHub Pages
-This repository is a static website. Enable GitHub Pages in **Settings → Pages**, choose **Deploy from a branch**, then select **main** and **/(root)**.
+- Live sessions are saved as `active` when they start and `done` when they stop, so a session survives
+  a refresh or a closed browser (and can be stopped from another device).
+- Monthly Wrapped statistics, the calendar, leaderboard and badges are all computed from these rows on
+  the fly — nothing is stored as a running total.
+- Dates are the device's local calendar date when the session started; a session that crosses midnight
+  belongs to the day it started.
+- Timelapses use the browser camera (`getUserMedia`), capture a frame every few seconds while the tab is
+  open (frames are kept in IndexedDB so a refresh doesn't lose them), and are rendered to video with
+  `MediaRecorder` when the session stops, then uploaded to Cloudinary.
