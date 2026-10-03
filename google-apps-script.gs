@@ -8,9 +8,100 @@ const CONFIG={
 };
 const PERSON_OFFSET={Lena:0,Ashlyn:1,Marc:2};
 function json_(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON)}
-function doGet(){return json_({ok:true,service:'IGTTYBTAP ratings + separate photo uploads endpoint',version:5})}
+function doGet(){return json_({ok:true,service:'IGTTYBTAP ratings + separate photo uploads endpoint',version:6})}
 function photoSheet_(ss){let sh=ss.getSheetByName('Photos');if(!sh){sh=ss.insertSheet('Photos');sh.appendRow(['Place','Area','Photo Type','Image URL','Drive File ID','Submitted By','Timestamp'])}return sh}
 function photoFolder_(){const name='IGTTYBTAP Spot Photos';const it=DriveApp.getFoldersByName(name),folder=it.hasNext()?it.next():DriveApp.createFolder(name);try{folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW)}catch(e){}return folder}
 function saveOnePhoto_(ss,p){const photo=p.photo;if(photo&&photo.url){if(!['cover','food','drinks'].includes(photo.type))throw new Error('Invalid photo type');if(!/^https:\/\/res\.cloudinary\.com\/k8af2qva\/image\/upload\//.test(String(photo.url)))throw new Error('Photo link must come from Cloudinary');photoSheet_(ss).appendRow([p.place,p.category,photo.type,photo.url,photo.publicId||'',p.person,new Date()]);SpreadsheetApp.flush();return{fileId:photo.publicId||'',url:photo.url}}if(!photo||!photo.data||!['cover','food','drinks'].includes(photo.type))throw new Error('Invalid photo payload');const m=String(photo.data).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);if(!m)throw new Error('Invalid image data');const bytes=Utilities.base64Decode(m[2]);if(bytes.length>8*1024*1024)throw new Error('Photo is too large');const safe=String(p.place).replace(/[^a-z0-9_-]+/gi,'-')||'spot',folder=photoFolder_(),blob=Utilities.newBlob(bytes,m[1],safe+'-'+photo.type+'-'+Date.now()+'.jpg'),file=folder.createFile(blob);try{file.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW)}catch(e){}const url='https://drive.google.com/thumbnail?id='+file.getId()+'&sz=w1600';photoSheet_(ss).appendRow([p.place,p.category,photo.type,url,file.getId(),p.person,new Date()]);SpreadsheetApp.flush();return{fileId:file.getId(),url}}
-function saveRating_(ss,p){const cfg=CONFIG[p.category];if(!cfg)throw new Error('Invalid category');if(!(p.person in PERSON_OFFSET))throw new Error('Invalid rater');if(!p.place)throw new Error('Place is required');const sheet=ss.getSheetByName(p.category);if(!sheet)throw new Error('Sheet not found');const last=Math.max(sheet.getLastRow(),1),places=last>1?sheet.getRange(2,1,last-1,1).getDisplayValues().flat():[],needle=String(p.place).trim().toLowerCase();let row=places.findIndex(x=>String(x).trim().toLowerCase()===needle);row=row<0?-1:row+2;if(p.mode==='existing'){if(row<0)throw new Error('That place is not in this category');if(cfg.meta.wifi&&p.wifi&&String(p.wifi).toUpperCase()!=='N/A')sheet.getRange(row,cfg.meta.wifi).setValue(p.wifi)}else{if(row>0)throw new Error('That place already exists. Choose Current place instead.');row=last+1;sheet.getRange(row,cfg.meta.place).setValue(p.place);sheet.getRange(row,cfg.meta.power).setValue(p.power||'N/A');if(cfg.meta.wifi)sheet.getRange(row,cfg.meta.wifi).setValue(p.wifi||'N/A');sheet.getRange(row,cfg.meta.hours).setValue(p.hours||'N/A');for(let j=0;j<cfg.metrics.length;j++)for(let off=0;off<3;off++)sheet.getRange(row,cfg.start+j*3+off).setValue('N/A')}sheet.getRange(row,cfg.notes[p.person]).setValue(p.notes||'');const off=PERSON_OFFSET[p.person];cfg.metrics.forEach((metric,j)=>{let value=p.scores&&p.scores[metric]!=null?p.scores[metric]:'N/A';if(value!==''&&String(value).toUpperCase()!=='N/A'){value=Number(value);if(!Number.isFinite(value)||value<0||value>10)throw new Error('Invalid '+metric+' rating')}else value='N/A';sheet.getRange(row,cfg.start+j*3+off).setValue(value)});const values=sheet.getRange(row,cfg.start,1,cfg.metrics.length*3).getValues()[0].filter(v=>typeof v==='number'&&isFinite(v));sheet.getRange(row,cfg.meta.average).setValue(values.length?values.reduce((a,b)=>a+b,0)/values.length:'N/A');SpreadsheetApp.flush();return{row}}
-function doPost(e){const lock=LockService.getScriptLock();try{lock.waitLock(20000);const p=JSON.parse((e.postData&&e.postData.contents)||'{}');if(!p.place)throw new Error('Place is required');if(!(p.person in PERSON_OFFSET))throw new Error('Invalid rater');if(!CONFIG[p.category])throw new Error('Invalid category');const ss=SpreadsheetApp.openById(SPREADSHEET_ID);if(p.action==='photo'){const saved=saveOnePhoto_(ss,p);return json_({ok:true,action:'photo',place:p.place,type:p.photo.type,fileId:saved.fileId,url:saved.url})}const result=saveRating_(ss,p);return json_({ok:true,action:'rating',row:result.row,place:p.place,category:p.category,person:p.person})}catch(err){console.error(err);return json_({ok:false,error:String(err&&err.message||err)})}finally{try{lock.releaseLock()}catch(e){}}}
+function saveRating_(ss,p){const cfg=CONFIG[p.category];if(!cfg)throw new Error('Invalid category');if(!(p.person in PERSON_OFFSET))throw new Error('Invalid rater');if(!p.place)throw new Error('Place is required');const sheet=ss.getSheetByName(p.category);if(!sheet)throw new Error('Sheet not found');const last=Math.max(sheet.getLastRow(),1),places=last>1?sheet.getRange(2,1,last-1,1).getDisplayValues().flat():[],needle=String(p.place).trim().toLowerCase();let row=places.findIndex(x=>String(x).trim().toLowerCase()===needle);row=row<0?-1:row+2;if(p.mode==='existing'){if(row<0)throw new Error('That place is not in this category');if(cfg.meta.wifi&&p.wifi&&String(p.wifi).toUpperCase()!=='N/A')sheet.getRange(row,cfg.meta.wifi).setValue(p.wifi)}else{if(row>0)throw new Error('That place already exists. Choose Current place instead.');row=last+1;sheet.getRange(row,cfg.meta.place).setValue(p.place);sheet.getRange(row,cfg.meta.power).setValue(p.power||'N/A');if(cfg.meta.wifi)sheet.getRange(row,cfg.meta.wifi).setValue(p.wifi||'N/A');sheet.getRange(row,cfg.meta.hours).setValue(p.hours||'N/A');for(let j=0;j<cfg.metrics.length;j++)for(let off=0;off<3;off++)sheet.getRange(row,cfg.start+j*3+off).setValue('N/A')}sheet.getRange(row,cfg.notes[p.person]).setValue(p.notes||'');const off=PERSON_OFFSET[p.person];cfg.metrics.forEach((metric,j)=>{let value=p.scores&&p.scores[metric]!=null?p.scores[metric]:'N/A';if(value!==''&&String(value).toUpperCase()!=='N/A'){value=Number(value);if(!Number.isFinite(value)||value<0||value>10)throw new Error('Invalid '+metric+' rating')}else value='N/A';sheet.getRange(row,cfg.start+j*3+off).setValue(value)});const values=sheet.getRange(row,cfg.start,1,cfg.metrics.length*3).getValues()[0].filter(v=>typeof v==='number'&&isFinite(v));sheet.getRange(row,cfg.meta.average).setValue(values.length?values.reduce((a,b)=>a+b,0)/values.length:'N/A');logRating_(ss,p);SpreadsheetApp.flush();return{row}}
+function doPost(e){const lock=LockService.getScriptLock();try{lock.waitLock(20000);const p=JSON.parse((e.postData&&e.postData.contents)||'{}');if(p.action==='session'||p.action==='deleteSession'){if(!(p.person in PERSON_OFFSET))throw new Error('Invalid rater');const ss=SpreadsheetApp.openById(SPREADSHEET_ID);if(p.action==='deleteSession')return json_(Object.assign({ok:true,action:'deleteSession'},deleteSession_(ss,p)));return json_(Object.assign({ok:true,action:'session'},saveSession_(ss,p)))}if(!p.place)throw new Error('Place is required');if(!(p.person in PERSON_OFFSET))throw new Error('Invalid rater');if(!CONFIG[p.category])throw new Error('Invalid category');const ss=SpreadsheetApp.openById(SPREADSHEET_ID);if(p.action==='photo'){const saved=saveOnePhoto_(ss,p);return json_({ok:true,action:'photo',place:p.place,type:p.photo.type,fileId:saved.fileId,url:saved.url})}const result=saveRating_(ss,p);return json_({ok:true,action:'rating',row:result.row,place:p.place,category:p.category,person:p.person})}catch(err){console.error(err);return json_({ok:false,error:String(err&&err.message||err)})}finally{try{lock.releaseLock()}catch(e){}}}
+
+// ---------------------------------------------------------------------------
+// Study Wrapped: study sessions + dated rating history (version 6)
+// Both tabs are created automatically on first use and kept as plain text so
+// the website reads them back exactly as written.
+// ---------------------------------------------------------------------------
+const SESSION_HEADERS=['Session ID','Person','Place','Area','Date','Start','End','Minutes','Status','Studied','Rating','Notes','Photos','Timelapse','Source','Started At','Updated At'];
+const RATING_LOG_HEADERS=['Logged At','Date','Person','Place','Area','Overall','Notes','Scores','Mode'];
+
+function textSheet_(ss,name,headers){
+  let sh=ss.getSheetByName(name);
+  if(!sh){
+    sh=ss.insertSheet(name);
+    sh.getRange(1,1,sh.getMaxRows(),headers.length).setNumberFormat('@');
+    sh.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function writeTextRow_(sh,row,values){
+  const r=sh.getRange(row,1,1,values.length);
+  r.setNumberFormat('@');
+  r.setValues([values.map(v=>v==null?'':String(v))]);
+}
+function clean_(v,max){return String(v==null?'':v).replace(/[\r\n]+/g,' ').trim().slice(0,max||500)}
+function today_(){return Utilities.formatDate(new Date(),Session.getScriptTimeZone(),'yyyy-MM-dd')}
+function isDate_(v){return /^\d{4}-\d{2}-\d{2}$/.test(String(v||''))}
+function isTime_(v){return /^\d{2}:\d{2}$/.test(String(v||''))}
+const CLOUDINARY_IMAGE_=/^https:\/\/res\.cloudinary\.com\/k8af2qva\/image\/upload\//;
+const CLOUDINARY_VIDEO_=/^https:\/\/res\.cloudinary\.com\/k8af2qva\/video\/upload\//;
+
+function findSessionRow_(sh,id){
+  const last=sh.getLastRow();
+  if(last<2)return -1;
+  const ids=sh.getRange(2,1,last-1,1).getDisplayValues().map(r=>r[0]);
+  const i=ids.indexOf(id);
+  return i<0?-1:i+2;
+}
+
+function saveSession_(ss,p){
+  const s=p.session||{};
+  const id=clean_(s.id,40);
+  if(!/^s_[a-z0-9]{6,32}$/.test(id))throw new Error('Invalid session id');
+  if(!clean_(s.place,120))throw new Error('Pick a study location');
+  if(!isDate_(s.date))throw new Error('Invalid session date');
+  if(s.start&&!isTime_(s.start))throw new Error('Invalid start time');
+  if(s.end&&!isTime_(s.end))throw new Error('Invalid end time');
+  const status=s.status==='active'?'active':'done';
+  const minutes=status==='active'?'':Math.max(0,Math.min(2880,Math.round(Number(s.minutes)||0)));
+  const rating=s.rating===''||s.rating==null?'':Math.max(1,Math.min(5,Math.round(Number(s.rating)||0)));
+  const photos=(Array.isArray(s.photos)?s.photos:[]).map(String).filter(u=>CLOUDINARY_IMAGE_.test(u)).slice(0,30);
+  const timelapse=CLOUDINARY_VIDEO_.test(String(s.timelapse||''))?String(s.timelapse):'';
+  const sh=textSheet_(ss,'Sessions',SESSION_HEADERS);
+  let row=findSessionRow_(sh,id);
+  if(row>0){
+    const owner=sh.getRange(row,2).getDisplayValue();
+    if(owner&&owner!==p.person)throw new Error('That session belongs to '+owner);
+  }else{
+    row=Math.max(sh.getLastRow(),1)+1;
+  }
+  writeTextRow_(sh,row,[
+    id,p.person,clean_(s.place,120),clean_(s.area,40)||'Other',s.date,s.start||'',s.end||'',minutes,status,
+    clean_(s.studied,200),rating,clean_(s.notes,1000),JSON.stringify(photos),timelapse,
+    s.source==='live'?'live':'manual',clean_(s.startedAt,40),new Date().toISOString()
+  ]);
+  SpreadsheetApp.flush();
+  return {id:id,row:row,status:status};
+}
+
+function deleteSession_(ss,p){
+  const id=clean_(p.id,40);
+  const sh=ss.getSheetByName('Sessions');
+  if(!sh)throw new Error('No sessions yet');
+  const row=findSessionRow_(sh,id);
+  if(row<0)throw new Error('Session not found');
+  if(sh.getRange(row,2).getDisplayValue()!==p.person)throw new Error('You can only delete your own sessions');
+  sh.deleteRow(row);
+  SpreadsheetApp.flush();
+  return {id:id};
+}
+
+function logRating_(ss,p){
+  const scores=Object.entries(p.scores||{}).filter(([,v])=>String(v).toUpperCase()!=='N/A'&&String(v)!=='');
+  const overall=scores.length?scores.reduce((a,[,v])=>a+Number(v),0)/scores.length:'';
+  const sh=textSheet_(ss,'Rating Log',RATING_LOG_HEADERS);
+  writeTextRow_(sh,Math.max(sh.getLastRow(),1)+1,[
+    new Date().toISOString(),isDate_(p.date)?p.date:today_(),p.person,clean_(p.place,120),p.category,
+    overall===''?'':Math.round(overall*100)/100,clean_(p.notes,1000),JSON.stringify(Object.fromEntries(scores)),p.mode==='existing'?'update':'new'
+  ]);
+}
+
